@@ -1,37 +1,100 @@
+import java.sql.*;
 import java.util.HashMap;
 import java.util.Map;
+
+public class DatabaseHelper {
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/reservation_system";
+    private static final String USER = "root";
+    private static final String PASS = "password";
+    
+    private Map<String, String> reservations = new HashMap<>();
+
+    public DatabaseHelper() {
+        // Load MySQL driver
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public Connection connect() {
+        try {
+            return DriverManager.getConnection(DB_URL, USER, PASS);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public void addReservation(String pnr, String fullName) {
+        reservations.put(pnr, fullName); // Storing in HashMap
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement("INSERT INTO reservations (pnr, fullname) VALUES (?, ?)")) {
+            stmt.setString(1, pnr);
+            stmt.setString(2, fullName);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getReservation(String pnr) {
+        if (reservations.containsKey(pnr)) {
+            return reservations.get(pnr); // Retrieve from HashMap
+        }
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement("SELECT fullname FROM reservations WHERE pnr = ?")) {
+            stmt.setString(1, pnr);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                String fullName = rs.getString("fullname");
+                reservations.put(pnr, fullName); // Cache in HashMap
+                return fullName;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public void cancelReservation(String pnr) {
+        reservations.remove(pnr); // Remove from HashMap
+
+        try (Connection conn = connect();
+             PreparedStatement stmt = conn.prepareStatement("DELETE FROM reservations WHERE pnr = ?")) {
+            stmt.setString(1, pnr);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+}
+/////Data base helper 
+
 import java.util.Random;
 import java.util.Scanner;
 
 public class OnlineReservationSystem {
-    private static Map<String, String> reservations = new HashMap<>();
+    private static DatabaseHelper dbHelper = new DatabaseHelper();
     private static Random random = new Random();
 
     public static void register() {
         Scanner sc = new Scanner(System.in);
-
-        // Register
         System.out.println("------Register------");
 
-        System.out.print("First name: ");
-        String firstName = sc.nextLine();
-        System.out.print("Last name: ");
-        String lastName = sc.nextLine();
-
-        System.out.println("Enter your birthday and gender");
-        System.out.print("Date of birth: ");
-        String dob = sc.nextLine();
-        System.out.print("Gender: ");
-        String gender = sc.nextLine();
-
+        System.out.print("Full name: ");
+        String fullName = sc.nextLine();
+        
         System.out.print("Create Password: ");
         String createPassword = sc.nextLine();
 
-        login(sc, firstName, createPassword);
+        login(sc, fullName, createPassword);
     }
 
-    public static void login(Scanner sc, String firstName, String createPassword) {
-        // Login
+    public static void login(Scanner sc, String fullName, String createPassword) {
         System.out.println("------Login------");
         System.out.print("Enter username: ");
         String userName = sc.nextLine();
@@ -39,134 +102,54 @@ public class OnlineReservationSystem {
         System.out.print("Enter password: ");
         String password = sc.nextLine();
 
-        if (firstName.equals(userName) && createPassword.equals(password)) {
+        if (fullName.equals(userName) && createPassword.equals(password)) {
             System.out.println("Login Successful!");
-            fill_details(sc);
+            fillDetails(sc);
         } else {
             System.out.println("Login failed. Incorrect username or password");
-            System.out.println();
-            System.out.println("------Enter correct details------");
-            System.out.println();
-            login(sc, firstName, createPassword); // Recursive call for retrying login
+            login(sc, fullName, createPassword);
         }
     }
 
-    public static void fill_details(Scanner sc) {
-        System.out.println();
+    public static void fillDetails(Scanner sc) {
         System.out.println("------Reservation Form------");
-
-        System.out.print("Enter your fullname: ");
-        String fullName = sc.nextLine();
-
-        System.out.print("Enter your age: ");
-        int age = sc.nextInt();
-        sc.nextLine();
 
         System.out.print("Enter train number: ");
         String trainNumber = sc.nextLine();
 
-        String trainName = getTrainName(trainNumber);
-        System.out.println("Train name: " + trainName);
+        System.out.print("Enter your full name: ");
+        String fullName = sc.nextLine();
 
-        System.out.print("Enter class type (e.g., Sleeper, AC): ");
-        String classType = sc.nextLine();
+        String pnr = generatePNR();
+        dbHelper.addReservation(pnr, fullName);  // Storing reservation
 
-        System.out.print("Enter date of journey (yyyy-mm-dd): ");
-        String dateOfJourney = sc.nextLine();
-
-        System.out.print("Enter departure place: ");
-        String departure = sc.nextLine();
-
-        System.out.print("Enter destination place: ");
-        String destination = sc.nextLine();
-
-        System.out.println();
-        System.out.println();
-        System.out.println("------Summary------");
-        System.out.println("Name: " + fullName);
-        System.out.println("Age: " + age);
-        System.out.println("Train Number: " + trainNumber);
-        System.out.println("Train Name: " + trainName);
-        System.out.println("Class Type: " + classType);
-        System.out.println("Date of Journey: " + dateOfJourney);
-        System.out.println("Departure: " + departure);
-        System.out.println("Destination: " + destination);
-
-        System.out.print("Press 'insert' to confirm the reservation: ");
-        String confirm = sc.nextLine();
-
-        if (confirm.equalsIgnoreCase("insert")) {
-            String pnr = generatePNR();
-            // reservations.put(pnr, fullName);
-            System.out.println();
-            System.out.println("Reservation confirmed! Your PNR is: " + pnr);
-            showMenu(sc);
-        } else {
-            System.out.println();
-            System.out.println("Reservation not confirmed. Please try again.");
-            fill_details(sc); // Retry if reservation not confirmed
-        }
+        System.out.println("Reservation confirmed! Your PNR is: " + pnr);
+        showMenu(sc, pnr);
     }
 
-    public static void showMenu(Scanner sc) {
-        while (true) {
-            System.out.println("------Menu------");
-            System.out.println("1. Confirm Tickets");
-            System.out.println("2. Cancel Tickets");
-            System.out.print("Enter your choice: ");
-            int choice = sc.nextInt();
-            sc.nextLine(); // Consume newline
+    public static void showMenu(Scanner sc, String pnr) {
+        System.out.println("------Menu------");
+        System.out.println("1. View Reservation");
+        System.out.println("2. Cancel Reservation");
+        System.out.print("Enter your choice: ");
+        int choice = sc.nextInt();
+        sc.nextLine();
 
-            switch (choice) {
-                case 1:
-                    System.out.println("Booking already confirmed.");
-                    return;
-                case 2:
-                    cancelTickets(sc);
-                    return;
-                default:
-                    System.out.println("Invalid choice. Please try again.");
-            }
-        }
-    }
-
-    public static void cancelTickets(Scanner sc) {
-        System.out.println("------Cancellation Form------");
-        System.out.print("Enter PNR number: ");
-        String pnr = sc.nextLine();
-    
-        if (pnr.matches("PNR\\d+")) { 
-            System.out.println("Reservation found for PNR: " + pnr);
-            System.out.print("Do you want to cancel this reservation? (yes/no): ");
-            String confirm = sc.nextLine();
-    
-            if (confirm.equalsIgnoreCase("yes")) {
-                System.out.println("Reservation cancelled successfully!");
-            } else {
-                System.out.println("Cancellation aborted.");
-            }
-        } else {
-            System.out.println("Invalid PNR format. Please enter a valid PNR.");
-        }
-    }
-    
-
-    public static String getTrainName(String trainNumber) {
-        switch (trainNumber) {
-            case "12798":
-                return "Venkatadri Super Fast Express";
-            case "17230":
-                return "Sabari Express";
-            case "12704":
-                return "FALAKNUMA EXP";
-            case "12713":
-                return "SATAVAHANA EXP";
-            case "12705":
-                return "GNT SC EXP";
-            case "12794":
-                return "RAYALASEEMA EXP";
+        switch (choice) {
+            case 1:
+                String reservation = dbHelper.getReservation(pnr);
+                if (reservation != null) {
+                    System.out.println("Reservation for PNR " + pnr + " is under the name: " + reservation);
+                } else {
+                    System.out.println("No reservation found with PNR: " + pnr);
+                }
+                break;
+            case 2:
+                dbHelper.cancelReservation(pnr);
+                System.out.println("Reservation cancelled successfully.");
+                break;
             default:
-                return "Unknown Train";
+                System.out.println("Invalid choice.");
         }
     }
 
@@ -178,3 +161,4 @@ public class OnlineReservationSystem {
         register();
     }
 }
+//// OnlineReservationSystem.java
